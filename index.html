@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Daily Goals</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f0f0f; --surface: #181818; --surface2: #222;
+    --border: rgba(255,255,255,0.08); --border-hover: rgba(255,255,255,0.16);
+    --text: #f0ede8; --muted: #666; --accent: #d4a853;
+    --green: #22c55e; --red: #ef4444;
+  }
+  html,body { height: 100%; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.02) 1px,transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .app { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  /* SYNC STATUS */
+  .sync-bar {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted); margin-bottom: 1.25rem;
+    letter-spacing: 0.04em;
+  }
+  .sync-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted); transition: background 0.3s;
+    flex-shrink: 0;
+  }
+  .sync-bar.synced .sync-dot   { background: var(--green); }
+  .sync-bar.syncing .sync-dot  { background: var(--accent); animation: blink 1s infinite; }
+  .sync-bar.error .sync-dot    { background: var(--red); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* HEADER */
+  header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap; }
+  .header-date { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+  .header-title { font-family: 'DM Serif Display', serif; font-size: clamp(1.8rem,5vw,2.4rem); color: var(--text); line-height: 1.1; }
+  .header-title em { font-style: italic; color: var(--accent); }
+  .live-clock { text-align: right; flex-shrink: 0; }
+  .clock-time { font-family: 'DM Mono', monospace; font-size: 1.3rem; font-weight: 400; color: var(--text); letter-spacing: -0.01em; line-height: 1; }
+  .clock-ampm { font-size: 11px; color: var(--muted); margin-left: 3px; vertical-align: super; font-family: 'DM Sans', sans-serif; }
+  .clock-day  { font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); text-align: right; margin-top: 3px; }
+
+  /* STATS */
+  .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 1.25rem; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.4rem 1rem; text-align: center; transition: border-color 0.2s; }
+  .stat:hover { border-color: var(--border-hover); }
+  .stat-n { font-size: 2.6rem; font-weight: 300; color: var(--text); line-height: 1; }
+  .stat-l { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+
+  /* PROGRESS */
+  .progress-row { display: flex; align-items: center; gap: 1.25rem; margin-bottom: 1.25rem; }
+  .ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
+  .ring-pct { font-size: 1rem; font-weight: 500; color: var(--text); }
+  .ring-sub { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+  .bar-wrap { flex: 1; }
+  .bar-track { height: 3px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #e8c47a); border-radius: 99px; width: 0%; transition: width 0.6s cubic-bezier(0.34,1.56,0.64,1); }
+  .bar-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 5px; }
+  .bar-labels span:last-child { color: var(--accent); font-weight: 500; }
+
+  /* ADD FORM */
+  .add-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; transition: border-color 0.2s; }
+  .add-card:focus-within { border-color: var(--accent); }
+  .add-label { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .add-row { display: flex; gap: 8px; }
+  .goal-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text); outline: none; transition: border-color 0.2s; }
+  .goal-input::placeholder { color: var(--muted); }
+  .goal-input:focus { border-color: rgba(212,168,83,0.4); }
+  .add-btn { background: var(--accent); color: #111; border: none; border-radius: 9px; padding: 9px 18px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: opacity 0.15s, transform 0.1s; }
+  .add-btn:hover { opacity: 0.88; }
+  .add-btn:active { transform: scale(0.97); }
+  .add-btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* GOALS LIST */
+  .list-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; margin-top: 0.75rem; }
+  .list-title { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .list-actions { display: flex; gap: 6px; }
+  .action-btn { font-size: 11px; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 7px; padding: 3px 9px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: color 0.15s, border-color 0.15s; }
+  .action-btn:hover { color: var(--text); border-color: var(--border-hover); }
+
+  .goal-list { display: flex; flex-direction: column; gap: 7px; }
+  .empty { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 13px; border: 1px dashed var(--border); border-radius: 14px; line-height: 1.8; }
+  .empty strong { display: block; font-size: 1.3rem; margin-bottom: 4px; color: var(--surface2); font-family: 'DM Serif Display', serif; }
+
+  /* LOADING */
+  .loading { text-align: center; padding: 2rem; color: var(--muted); font-size: 13px; }
+  .loading-dots::after { content: ''; animation: dots 1.2s infinite; }
+  @keyframes dots { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} }
+
+  /* GOAL ITEM */
+  .goal-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 0.75rem 1rem;
+    display: flex; align-items: center; gap: 10px;
+    animation: slideIn 0.22s ease; transition: border-color 0.2s, transform 0.15s, opacity 0.3s;
+  }
+  .goal-item:hover { border-color: var(--border-hover); transform: translateX(2px); }
+  .goal-item.is-complete { opacity: 0.45; }
+  .goal-item.saving { opacity: 0.6; }
+  @keyframes slideIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+
+  .goal-num { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; flex-shrink: 0; }
+  .goal-text { flex: 1; font-size: 14px; color: var(--text); line-height: 1.5; word-break: break-word; }
+  .goal-text.done { text-decoration: line-through; color: var(--muted); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .status-select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface2); color: var(--text); font-size: 11px; font-family: 'DM Sans', sans-serif; cursor: pointer; outline: none; max-width: 100px; }
+  .del-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 2px 4px; border-radius: 5px; line-height: 1; transition: color 0.15s, background 0.15s; }
+  .del-btn:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
+
+  /* PER-GOAL CIRCLE TIMER */
+  .goal-timer { position: relative; flex-shrink: 0; width: 44px; height: 44px; cursor: pointer; }
+  .goal-timer svg { display: block; }
+  .timer-track { fill: none; stroke: var(--surface2); stroke-width: 3; }
+  .timer-ring  { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round;
+    stroke-dasharray: 113.1; stroke-dashoffset: 113.1;
+    transform-origin: 50% 50%; transform: rotate(-90deg); transition: stroke 0.3s; }
+  .goal-timer.active .timer-ring { stroke: var(--green); }
+  .timer-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; pointer-events: none; }
+  .timer-icon { font-size: 11px; line-height: 1; color: var(--muted); transition: color 0.2s; }
+  .goal-timer.active .timer-icon { color: var(--green); }
+  .timer-time { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--muted); line-height: 1; transition: color 0.2s; }
+  .goal-timer.active .timer-time { color: var(--green); }
+  .goal-timer:hover .timer-track { stroke: rgba(255,255,255,0.1); }
+
+  footer { text-align: center; margin-top: 3rem; font-size: 10px; letter-spacing: 0.06em; color: #2a2a2a; text-transform: uppercase; }
+
+  @media (max-width: 520px) {
+    header { flex-direction: column; }
+    .live-clock { text-align: left; } .clock-day { text-align: left; }
+    .progress-row { flex-direction: column; align-items: flex-start; }
+    .bar-wrap { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SYNC STATUS -->
+  <div class="sync-bar" id="sync-bar">
+    <div class="sync-dot"></div>
+    <span id="sync-label">Connecting...</span>
+  </div>
+
+  <!-- HEADER -->
+  <header>
+    <div>
+      <div class="header-date" id="date-lbl"></div>
+      <h1 class="header-title">Daily <em>Goals</em></h1>
+    </div>
+    <div class="live-clock">
+      <div class="clock-time"><span id="clock-hm">--:--</span><span class="clock-ampm" id="clock-ampm"></span></div>
+      <div class="clock-day" id="clock-day"></div>
+    </div>
+  </header>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat"><div class="stat-n" id="s-total">0</div><div class="stat-l">total</div></div>
+    <div class="stat"><div class="stat-n" id="s-done">0</div><div class="stat-l">done</div></div>
+    <div class="stat"><div class="stat-n" id="s-left">0</div><div class="stat-l">remaining</div></div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="progress-row">
+    <div class="ring-wrap">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r="22" fill="none" stroke="#222" stroke-width="4"/>
+        <circle cx="28" cy="28" r="22" fill="none" stroke="#d4a853" stroke-width="4"
+          stroke-linecap="round" stroke-dasharray="138.23" stroke-dashoffset="138.23"
+          transform="rotate(-90 28 28)" id="ring"
+          style="transition:stroke-dashoffset 0.6s cubic-bezier(0.34,1.2,0.64,1);"/>
+      </svg>
+      <div class="ring-pct" id="pct-txt">0%</div>
+      <div class="ring-sub">done</div>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-track"><div class="bar-fill" id="bar-fill"></div></div>
+      <div class="bar-labels"><span>0%</span><span id="bar-pct-lbl">0%</span></div>
+    </div>
+  </div>
+
+  <!-- ADD FORM -->
+  <div class="add-card">
+    <div class="add-label">New goal</div>
+    <div class="add-row">
+      <input class="goal-input" id="goal-input" type="text" placeholder="What do you want to accomplish today?"/>
+      <button class="add-btn" id="add-btn" onclick="addGoal()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- GOALS -->
+  <div class="list-header">
+    <div class="list-title">Today's goals</div>
+    <div class="list-actions">
+      <button class="action-btn" onclick="clearDone()">Clear done</button>
+      <button class="action-btn" onclick="clearAll()">Clear all</button>
+    </div>
+  </div>
+  <div class="goal-list" id="goal-list">
+    <div class="loading"><span class="loading-dots">Loading</span></div>
+  </div>
+
+  <footer>Synced via Supabase &mdash; data persists across all your devices</footer>
+</div>
+
+<script>
+  /* ── SUPABASE CONFIG ── */
+  const SUPA_URL = 'https://phmchuozyvcxnwazpzcv.supabase.co';
+  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBobWNodW96eXZjeG53YXpwemN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MDA1OTEsImV4cCI6MjA5MDM3NjU5MX0.dRB53fxxu7IH_qPRDVmuxIQnOU03FA2pIhcLML6idW4';
+  const HEADERS  = { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+
+  async function sbGet(table, params) {
+    const q = params ? '?' + params : '';
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}${q}`, { headers: HEADERS });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+  async function sbInsert(table, body) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, { method:'POST', headers: HEADERS, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+  async function sbUpdate(table, id, body) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method:'PATCH', headers: HEADERS, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+  async function sbDelete(table, id) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method:'DELETE', headers: HEADERS });
+    if (!r.ok) throw new Error(await r.text());
+  }
+
+  /* ── CONSTANTS ── */
+  const CIRC_MAIN = 2 * Math.PI * 22;
+  const CIRC_GOAL = 113.1;
+  const MAX_VIS   = 60 * 60 * 1000; // 1hr in ms
+
+  const STATUS = {
+    todo:     { label: 'To do',     color: '#6b7280' },
+    ongoing:  { label: 'Ongoing',   color: '#3b82f6' },
+    blocked:  { label: 'Blocked',   color: '#ef4444' },
+    review:   { label: 'In review', color: '#f59e0b' },
+    complete: { label: 'Complete',  color: '#22c55e' },
+  };
+
+  /* ── STATE ── */
+  let goals         = [];
+  let activeTimerId = null;
+  let masterTick    = null;
+
+  /* ── SYNC UI ── */
+  function syncState(state, msg) {
+    const bar  = document.getElementById('sync-bar');
+    const lbl  = document.getElementById('sync-label');
+    bar.className = 'sync-bar ' + state;
+    lbl.textContent = msg;
+  }
+
+  /* ── DATE ── */
+  function todayStr() { return new Date().toISOString().slice(0,10); }
+
+  /* ── LOAD FROM SUPABASE ── */
+  async function loadGoals() {
+    syncState('syncing', 'Loading...');
+    try {
+      const rows = await sbGet('goals', `date=eq.${todayStr()}&order=position.asc,created_at.asc`);
+      goals = rows.map(r => ({
+        id:        r.id,
+        text:      r.text,
+        status:    r.status,
+        elapsed:   r.elapsed || 0,
+        position:  r.position || 0,
+        startedAt: null,
+      }));
+      syncState('synced', 'Synced');
+      render();
+    } catch(e) {
+      syncState('error', 'Connection error — working offline');
+      render();
+    }
+  }
+
+  /* ── ADD GOAL ── */
+  async function addGoal() {
+    const inp = document.getElementById('goal-input');
+    const txt = inp.value.trim(); if (!txt) { inp.focus(); return; }
+    const btn = document.getElementById('add-btn');
+    btn.disabled = true;
+    inp.value = '';
+
+    const pos = goals.length;
+    syncState('syncing', 'Saving...');
+    try {
+      const rows = await sbInsert('goals', { date: todayStr(), text: txt, status: 'todo', elapsed: 0, position: pos });
+      const r = rows[0];
+      goals.push({ id: r.id, text: r.text, status: r.status, elapsed: 0, position: pos, startedAt: null });
+      syncState('synced', 'Synced');
+      render();
+    } catch(e) {
+      syncState('error', 'Failed to save');
+    }
+    btn.disabled = false;
+    inp.focus();
+  }
+  document.getElementById('goal-input').addEventListener('keydown', e => { if (e.key==='Enter') addGoal(); });
+
+  /* ── DELETE ── */
+  async function removeGoal(id) {
+    if (activeTimerId === id) activeTimerId = null;
+    goals = goals.filter(g => g.id !== id);
+    render();
+    syncState('syncing', 'Saving...');
+    try { await sbDelete('goals', id); syncState('synced', 'Synced'); }
+    catch(e) { syncState('error', 'Failed to delete'); loadGoals(); }
+  }
+
+  /* ── STATUS ── */
+  async function setStatus(id, status) {
+    const g = goals.find(g => g.id === id); if (!g) return;
+    g.status = status; render();
+    syncState('syncing', 'Saving...');
+    try { await sbUpdate('goals', id, { status }); syncState('synced', 'Synced'); }
+    catch(e) { syncState('error', 'Failed to update'); loadGoals(); }
+  }
+
+  /* ── CLEAR DONE ── */
+  async function clearDone() {
+    const done = goals.filter(g => g.status === 'complete');
+    if (!done.length) return;
+    done.forEach(g => { if (g.startedAt) { g.elapsed += Date.now()-g.startedAt; g.startedAt=null; } if(activeTimerId===g.id) activeTimerId=null; });
+    goals = goals.filter(g => g.status !== 'complete');
+    render(); syncState('syncing', 'Saving...');
+    try {
+      await Promise.all(done.map(g => sbDelete('goals', g.id)));
+      syncState('synced', 'Synced');
+    } catch(e) { syncState('error', 'Failed'); loadGoals(); }
+  }
+
+  /* ── CLEAR ALL ── */
+  async function clearAll() {
+    if (!goals.length) return;
+    if (!confirm('Clear all goals for today?')) return;
+    const all = [...goals];
+    goals = []; activeTimerId = null; render();
+    syncState('syncing', 'Saving...');
+    try {
+      await Promise.all(all.map(g => sbDelete('goals', g.id)));
+      syncState('synced', 'Synced');
+    } catch(e) { syncState('error', 'Failed'); loadGoals(); }
+  }
+
+  /* ── TIMER ── */
+  function goalElapsed(g) {
+    return g.elapsed + (g.startedAt ? (Date.now() - g.startedAt) : 0);
+  }
+  function fmtMs(ms) {
+    const t=Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
+    if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  let saveTimerDebounce = {};
+  async function persistElapsed(g) {
+    clearTimeout(saveTimerDebounce[g.id]);
+    saveTimerDebounce[g.id] = setTimeout(async () => {
+      try { await sbUpdate('goals', g.id, { elapsed: Math.floor(goalElapsed(g)) }); }
+      catch(e) { /* silent */ }
+    }, 2000);
+  }
+
+  function toggleTimer(id) {
+    const g = goals.find(x => x.id === id); if (!g) return;
+    if (g.startedAt) {
+      g.elapsed += Date.now() - g.startedAt;
+      g.startedAt = null; activeTimerId = null;
+      persistElapsed(g);
+    } else {
+      if (activeTimerId !== null) {
+        const cur = goals.find(x => x.id === activeTimerId);
+        if (cur && cur.startedAt) {
+          cur.elapsed += Date.now() - cur.startedAt;
+          cur.startedAt = null;
+          updateGoalTimerEl(cur);
+          persistElapsed(cur);
+        }
+      }
+      g.startedAt = Date.now(); activeTimerId = id;
+    }
+    updateGoalTimerEl(g);
+  }
+
+  function updateGoalTimerEl(g) {
+    const el = document.getElementById('gtimer-' + g.id); if (!el) return;
+    const ms  = goalElapsed(g);
+    const sec = Math.floor(ms / 1000);
+    const offset = (CIRC_GOAL - Math.min(ms / MAX_VIS, 1) * CIRC_GOAL).toFixed(2);
+    const ring = el.querySelector('.timer-ring');
+    if (ring) { ring.style.strokeDashoffset = offset; ring.style.stroke = g.startedAt ? 'var(--green)' : 'var(--accent)'; }
+    const timeEl = el.querySelector('.timer-time');
+    if (timeEl) timeEl.textContent = fmtMs(ms);
+    const iconEl = el.querySelector('.timer-icon');
+    if (iconEl) iconEl.textContent = g.startedAt ? '⏸' : '▶';
+    el.classList.toggle('active', !!g.startedAt);
+  }
+
+  function tickAll() { goals.forEach(g => { if (g.startedAt) updateGoalTimerEl(g); }); }
+
+  /* ── CLOCK ── */
+  function tickClock() {
+    const n=new Date(); let h=n.getHours();
+    const m=String(n.getMinutes()).padStart(2,'0');
+    const ap=h>=12?'PM':'AM'; h=h%12||12;
+    document.getElementById('clock-hm').textContent=String(h).padStart(2,'0')+':'+m;
+    document.getElementById('clock-ampm').textContent=ap;
+    const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    document.getElementById('clock-day').textContent=days[n.getDay()];
+  }
+
+  /* ── RENDER ── */
+  function render() {
+    const list  = document.getElementById('goal-list');
+    const total = goals.length;
+    const done  = goals.filter(g => g.status==='complete').length;
+    const pct   = total===0 ? 0 : Math.round((done/total)*100);
+
+    document.getElementById('s-total').textContent = total;
+    document.getElementById('s-done').textContent  = done;
+    document.getElementById('s-left').textContent  = total-done;
+    document.getElementById('pct-txt').textContent = pct+'%';
+    document.getElementById('bar-fill').style.width = pct+'%';
+    document.getElementById('bar-pct-lbl').textContent = pct+'%';
+    document.getElementById('ring').setAttribute('stroke-dashoffset',
+      (CIRC_MAIN-(pct/100)*CIRC_MAIN).toFixed(2));
+
+    list.innerHTML = '';
+    if (!goals.length) {
+      list.innerHTML = '<div class="empty"><strong>✦</strong>No goals yet.<br>Add one above to get started.</div>';
+      return;
+    }
+    goals.forEach((g,i) => {
+      const c   = STATUS[g.status] || STATUS.todo;
+      const ms  = goalElapsed(g);
+      const offset = (CIRC_GOAL - Math.min(ms/MAX_VIS,1)*CIRC_GOAL).toFixed(2);
+      const el  = document.createElement('div');
+      el.className = 'goal-item' + (g.status==='complete' ? ' is-complete' : '');
+      el.innerHTML = `
+        <div class="goal-num" style="background:${c.color}22;color:${c.color}">${i+1}</div>
+        <div class="goal-text${g.status==='complete'?' done':''}">${esc(g.text)}</div>
+        <div class="status-dot" style="background:${c.color}"></div>
+        <select class="status-select">
+          ${Object.entries(STATUS).map(([k,v])=>`<option value="${k}"${g.status===k?' selected':''}>${v.label}</option>`).join('')}
+        </select>
+        <div class="goal-timer${g.startedAt?' active':''}" id="gtimer-${g.id}" title="Start/stop timer">
+          <svg width="44" height="44" viewBox="0 0 44 44">
+            <circle class="timer-track" cx="22" cy="22" r="18"/>
+            <circle class="timer-ring" cx="22" cy="22" r="18"
+              style="stroke-dashoffset:${offset};stroke:${g.startedAt?'var(--green)':'var(--accent)'}"/>
+          </svg>
+          <div class="timer-inner">
+            <span class="timer-icon">${g.startedAt?'⏸':'▶'}</span>
+            <span class="timer-time">${fmtMs(ms)}</span>
+          </div>
+        </div>
+        <button class="del-btn" title="Remove">&#x2715;</button>`;
+      el.querySelector('select').addEventListener('change', e => setStatus(g.id, e.target.value));
+      el.querySelector('.del-btn').addEventListener('click', () => removeGoal(g.id));
+      el.querySelector('.goal-timer').addEventListener('click', () => toggleTimer(g.id));
+      list.appendChild(el);
+    });
+  }
+
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  /* ── INIT ── */
+  (()=>{
+    const d=new Date();
+    document.getElementById('date-lbl').textContent =
+      d.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  })();
+
+  tickClock();
+  setInterval(tickClock, 1000);
+  setInterval(tickAll, 1000);
+
+  // Save elapsed timers before page closes
+  window.addEventListener('beforeunload', () => {
+    goals.forEach(g => {
+      if (g.startedAt) {
+        g.elapsed += Date.now() - g.startedAt;
+        g.startedAt = null;
+        navigator.sendBeacon(`${SUPA_URL}/rest/v1/goals?id=eq.${g.id}`,
+          JSON.stringify({ elapsed: Math.floor(g.elapsed) }));
+      }
+    });
+  });
+
+  loadGoals();
+</script>
+</body>
+</html>
