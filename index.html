@@ -54,6 +54,21 @@
     display: flex; gap: 4px; flex: 1; min-width: 0;
     overflow-x: auto; -webkit-overflow-scrolling: touch;
   }
+  .day-tabs-wrap { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  .day-pct-strip {
+    display: flex; gap: 4px; flex: 1; min-width: 0;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    padding: 0 0 2px;
+  }
+  .day-pct {
+    flex: 1; min-width: 44px;
+    text-align: center;
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .day-pct.is-active { color: var(--accent); }
   .day-tab {
     flex: 1; min-width: 44px;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
@@ -67,6 +82,7 @@
     border-color: rgba(212,168,83,0.45); background: rgba(212,168,83,0.08); color: var(--text);
   }
   .day-tab.is-today:not(.is-active) { border-color: rgba(212,168,83,0.2); }
+  .day-tab-pct { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); line-height: 1; }
   .day-tab-num { font-size: 15px; font-weight: 500; color: var(--text); line-height: 1; }
   .day-tab-day { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; }
   .day-tab.is-active .day-tab-num { color: var(--accent); }
@@ -187,7 +203,10 @@
   <!-- 7-DAY TABS -->
   <div class="day-strip">
     <button type="button" class="day-nav" id="day-prev" aria-label="Previous 7 days">‹</button>
-    <div class="day-tabs" id="day-tabs" role="tablist" aria-label="Pick a day"></div>
+    <div class="day-tabs-wrap">
+      <div class="day-pct-strip" id="day-pct-strip" aria-hidden="true"></div>
+      <div class="day-tabs" id="day-tabs" role="tablist" aria-label="Pick a day"></div>
+    </div>
     <button type="button" class="day-nav" id="day-next" aria-label="Next 7 days">›</button>
   </div>
 
@@ -299,6 +318,7 @@
   let masterTick    = null;
   let selectedDate  = '';
   let windowStart   = '';
+  let windowStats   = {};
 
   /* ── SYNC UI ── */
   function syncState(state, msg) {
@@ -343,14 +363,47 @@
 
   const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  function statsPctForDay(iso) {
+    const s = windowStats[iso];
+    const total = s?.total ?? 0;
+    const done = s?.done ?? 0;
+    return total === 0 ? 0 : Math.round((done / total) * 100);
+  }
+
+  async function loadWindowStats() {
+    const days = Array.from({ length: 7 }, (_, i) => addDays(windowStart, i));
+    const inList = days.join(',');
+    try {
+      const rows = await sbGet('goals', `select=date,status&date=in.(${inList})`);
+      const next = Object.fromEntries(days.map(d => [d, { total: 0, done: 0 }]));
+      for (const r of rows) {
+        if (!next[r.date]) next[r.date] = { total: 0, done: 0 };
+        next[r.date].total += 1;
+        if (r.status === 'complete') next[r.date].done += 1;
+      }
+      windowStats = next;
+    } catch (e) {
+      windowStats = Object.fromEntries(days.map(d => [d, { total: 0, done: 0 }]));
+    }
+  }
+
   function renderDayTabs() {
     const wrap = document.getElementById('day-tabs');
+    const pctStrip = document.getElementById('day-pct-strip');
     const t = todayStr();
     wrap.innerHTML = '';
+    pctStrip.innerHTML = '';
     for (let i = 0; i < 7; i++) {
       const iso = addDays(windowStart, i);
       const [y, mo, day] = iso.split('-').map(Number);
       const dt = new Date(y, mo - 1, day);
+      const pct = statsPctForDay(iso);
+
+      const pctEl = document.createElement('div');
+      pctEl.className = 'day-pct' + (iso === selectedDate ? ' is-active' : '');
+      pctEl.textContent = pct + '%';
+      pctStrip.appendChild(pctEl);
+
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'day-tab' + (iso === selectedDate ? ' is-active' : '') + (iso === t ? ' is-today' : '');
@@ -369,6 +422,8 @@
     updateDateLabel(iso);
     updateListTitle();
     await loadGoals();
+    await loadWindowStats();
+    renderDayTabs();
   }
 
   async function shiftWindow(dir) {
@@ -380,6 +435,8 @@
     updateDateLabel(selectedDate);
     updateListTitle();
     await loadGoals();
+    await loadWindowStats();
+    renderDayTabs();
   }
 
   function initDateNav() {
@@ -443,6 +500,8 @@
       goals.push({ id: r.id, text: r.text, status: r.status, elapsed: 0, position: pos, startedAt: null });
       syncState('synced', 'Synced');
       render();
+      await loadWindowStats();
+      renderDayTabs();
     } catch(e) {
       syncState('error', 'Failed to save');
     }
@@ -459,6 +518,8 @@
     syncState('syncing', 'Saving...');
     try { await sbDelete('goals', id); syncState('synced', 'Synced'); }
     catch(e) { syncState('error', 'Failed to delete'); loadGoals(); }
+    await loadWindowStats();
+    renderDayTabs();
   }
 
   /* ── STATUS ── */
@@ -468,6 +529,8 @@
     syncState('syncing', 'Saving...');
     try { await sbUpdate('goals', id, { status }); syncState('synced', 'Synced'); }
     catch(e) { syncState('error', 'Failed to update'); loadGoals(); }
+    await loadWindowStats();
+    renderDayTabs();
   }
 
   /* ── CLEAR DONE ── */
@@ -481,6 +544,8 @@
       await Promise.all(done.map(g => sbDelete('goals', g.id)));
       syncState('synced', 'Synced');
     } catch(e) { syncState('error', 'Failed'); loadGoals(); }
+    await loadWindowStats();
+    renderDayTabs();
   }
 
   /* ── CLEAR ALL ── */
@@ -495,6 +560,8 @@
       await Promise.all(all.map(g => sbDelete('goals', g.id)));
       syncState('synced', 'Synced');
     } catch(e) { syncState('error', 'Failed'); loadGoals(); }
+    await loadWindowStats();
+    renderDayTabs();
   }
 
   /* ── TIMER ── */
@@ -623,6 +690,7 @@
   document.getElementById('day-next').addEventListener('click', () => shiftWindow(1));
 
   initDateNav();
+  loadWindowStats().then(renderDayTabs);
 
   tickClock();
   setInterval(tickClock, 1000);
